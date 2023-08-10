@@ -87,8 +87,12 @@ strip_rtf <- function(text, verbose = FALSE,
   cp <- stringr::str_match(text, "\\\\ansicpg([0-9]+)")[,2]
   if (is.na(cp)) {
     cpname <- NA_character_
+    code_before <- integer(0)
+    code_after <- integer(0)
   } else {
     cpname <- paste("CP", cp, sep = "")
+    code_before <- .cptable[[cpname]]$before
+    code_after <- .cptable[[cpname]]$after
   }
 
   pattern <- stringr::regex(
@@ -117,29 +121,27 @@ strip_rtf <- function(text, verbose = FALSE,
                          dest_names = .destinations,
                          special_keys = keys,
                          special_hex  = hexstr,
+                         code_before = code_before,
+                         code_after = code_after,
                          verbose = verbose)
   #print(parsed)
 
-  #print(parsed$intcode)
-  # out <- strsplit(parsed$strcode, "x") %>%
-  #   lapply(as.hexmode) %>%
-  #   lapply(intToUtf8)
-  #print(out)
+  # convert integer codes to utf8
   out <- lapply(parsed$intcode, intToUtf8) %>% unlist()
-
-  # code page translation
-  if (!is.na(cpname)) {
-    if (cpname %in% names(.cptable)) {
-      out[parsed$toconv] <- chartr(.cptable[[cpname]]$before,
-                                   .cptable[[cpname]]$after,
-                                   out[parsed$toconv])
-      #out[parsed$toconv] <- lapply(out[parsed$toconv], function(a) {
-      #  chartr(.cptable[[cpname]]$before, .cptable[[cpname]]$after, a)
-      #})
-    } else {
-      warning("conversion table for ", cpname, " is missing")
-    }
-  }
+  #print(out)
+  # code page translation ... will be done in the strip_helper function
+  # if (!is.na(cpname)) {
+  #   if (cpname %in% names(.cptable)) {
+  #     out[parsed$toconv] <- chartr(.cptable[[cpname]]$before,
+  #                                  .cptable[[cpname]]$after,
+  #                                  out[parsed$toconv])
+  #     #out[parsed$toconv] <- lapply(out[parsed$toconv], function(a) {
+  #     #  chartr(.cptable[[cpname]]$before, .cptable[[cpname]]$after, a)
+  #     #})
+  #   } else {
+  #     warning("conversion table for ", cpname, " is missing")
+  #   }
+  # }
 
   # if there is no table or ignore table option is specified,
   # remove tmp_rep characters,
@@ -155,27 +157,27 @@ strip_rtf <- function(text, verbose = FALSE,
   }
   #print(out)
 
-
   # non-table sections are split by line breaks
   # table sections are split by \row
-  out[!parsed$table] <- stringr::str_replace_all(out[!parsed$table], "\n",
-                                                 tmp_rep_str[1])
+  # so we replace line breaks
+  out[!parsed$table] <- stringr::str_replace_all(out[!parsed$table], "\n", tmp_rep_str[1])
   out <- strsplit(out, tmp_rep_str[1])
   # unlist, with table flag kept tracked
   len <- lapply(out, length) %>% unlist()
   out <- unlist(out)
   table_flg <- Map(rep, parsed$table, len) %>% unlist()
-
+  #print(out)
+  #print(table_flg)
 
   # remove empty table sections
   emp_tbl <- (nchar(out) == 0) & table_flg
   out <- out[!emp_tbl]
   table_flg <- table_flg[!emp_tbl]
 
+  # cell separators are replaced
+  out[table_flg] <- stringr::str_replace_all(out[table_flg], tmp_rep_str[2], cell_end)
   # row start and end indicators added
   out[table_flg] <- paste(row_start, out[table_flg], row_end, sep = "")
-  # cell separators are replaced
-  out <- stringr::str_replace_all(out, tmp_rep_str[2], cell_end)
 
 
   out
